@@ -1,0 +1,102 @@
+#!/bin/bash
+
+sudo apt update -y
+sudo apt install gpg -y 
+sudo mkdir -p /etc/apt/keyrings/
+wget -q -O - https://apt.grafana.com/gpg.key | gpg --dearmor | sudo tee /etc/apt/keyrings/grafana.gpg > /dev/null
+echo "deb [signed-by=/etc/apt/keyrings/grafana.gpg] https://apt.grafana.com stable main" | sudo tee /etc/apt/sources.list.d/grafana.list
+sudo apt-get update -y
+sudo apt-get install alloy -y
+ 
+sudo mkdir -p /etc/alloy
+sudo chmod 0755 /etc/alloy
+sudo cp /etc/alloy/config.alloy /etc/alloy/config.alloy.backup
+
+sudo bash -c 'cat <<EOF > /etc/alloy/config.alloy
+prometheus.remote_write "local_prom" { 
+    endpoint { 
+        url = "http://10.0.34.144:9090/api/v1/write" // define prometheus server endpoint 
+    } 
+} 
+
+prometheus.exporter.unix "integrations_node_exporter" { 
+} 
+
+discovery.relabel "integrations_node_exporter" { 
+    targets = prometheus.exporter.unix.integrations_node_exporter.targets 
+
+    rule { 
+        target_label = "instance" 
+        replacement  = constants.hostname 
+    } 
+
+    rule { 
+        target_label = "job" 
+        replacement = "integrations/cadvisor" 
+    } 
+} 
+
+prometheus.scrape "integrations_node_exporter" { 
+    targets = discovery.relabel.integrations_node_exporter.output 
+    forward_to = [prometheus.remote_write.local_prom.receiver] 
+} 
+
+prometheus.exporter.cadvisor "example" { 
+    docker_host = "unix:///var/run/docker.sock" 
+    storage_duration = "5m" 
+} 
+
+prometheus.scrape "scraper" { 
+    targets    = prometheus.exporter.cadvisor.example.targets 
+    forward_to = [prometheus.remote_write.demo.receiver] 
+    scrape_interval = "10s" 
+} 
+
+prometheus.remote_write "demo" { 
+    endpoint { 
+        url = "http://10.0.34.144:9090/api/v1/write" 
+    } 
+} 
+
+// ############################### 
+// #### Logging Configuration #### 
+// ############################### 
+
+discovery.docker "linux" { 
+    host = "unix:///var/run/docker.sock" 
+} 
+
+discovery.relabel "logs_integrations_docker" { 
+    targets = [] 
+
+    rule { 
+        source_labels = ["__meta_docker_container_name"] 
+        regex = "/(.*)" 
+        target_label = "service_name" 
+    } 
+} 
+
+loki.source.docker "default" { 
+    host       = "unix:///var/run/docker.sock" 
+    targets    = discovery.docker.linux.targets 
+    labels     = {"platform" = "docker"} 
+    relabel_rules = discovery.relabel.logs_integrations_docker.rules 
+    forward_to = [loki.write.local.receiver] 
+} 
+
+loki.write "local" { 
+    endpoint { 
+        url = "http://10.0.34.147:3100/loki/api/v1/push" 
+    } 
+}
+EOF'
+
+sudo sed -i "s|User=alloy|User=root|g" /usr/lib/systemd/system/alloy.service
+
+sudo systemctl daemon-reload
+sudo systemctl enable alloy
+sudo systemctl start alloy
+udo systemctl restart alloy.service
+log "Alloy service status:"
+sudo systemctl status alloy
+sudo usermod -a -G docker alloy 
