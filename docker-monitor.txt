@@ -2,7 +2,8 @@
 set e
 
 sudo apt update -y
-sudo aptinstall docker.io -y
+sudo apt install docker.io -y
+sudo run -d --name dockercont -p80:80 nginx
 sudo apt install gpg -y 
 sudo mkdir -p /etc/apt/keyrings/
 wget -q -O - https://apt.grafana.com/gpg.key | gpg --dearmor | sudo tee /etc/apt/keyrings/grafana.gpg > /dev/null
