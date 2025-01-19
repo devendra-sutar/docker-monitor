@@ -5,8 +5,8 @@ set e
 API_ENDPOINT="https://$IP:8000/api/v1/agents/"
 HOST_IP=$(hostname -I | awk '{print $1}')
 ALLOY_PORT=8080
-Prometheus="$Prometheus"
-loki="$loki
+Prometheus=$Prometheus
+loki=$loki
 
 sudo apt update -y
 sudo apt install docker.io -y 
@@ -60,7 +60,7 @@ prometheus.scrape "scraper" {
 
 prometheus.remote_write "demo" { 
     endpoint { 
-        url = "http://$Prometheus/api/v1/write" 
+        url = "http://promoo:9090/api/v1/write" 
     } 
 } 
 
@@ -92,12 +92,14 @@ loki.source.docker "default" {
 
 loki.write "local" { 
     endpoint { 
-        url = "http://$loki:3100/loki/api/v1/push" 
+        url = "http://lokii:3100/loki/api/v1/push" 
     } 
 }
 EOF'
 
 sudo sed -i "s|User=alloy|User=root|g" /usr/lib/systemd/system/alloy.service
+sudo sed -i "s|promoo|$Prometheus|g"  /etc/alloy/config.alloy
+sudo sed -i "s|lokii|$loki|g"  /etc/alloy/config.alloy
 
 #API_ENDPOINT="https://10.0.32.122:8000/api/v1/agents/"
 #API_ENDPOINT="https://$IP:8000/api/v1/agents/"
